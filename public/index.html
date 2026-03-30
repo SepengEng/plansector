@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Controle de Entregas</title>
+  <style>
+    * { box-sizing: border-box; font-family: Arial, sans-serif; }
+
+    :root {
+      --bg: #0f0f10;
+      --border: #34383d;
+      --text: #f5f5f5;
+      --text-soft: #b8bcc2;
+      --red-soft: rgba(179, 32, 37, 0.12);
+      --white: #ffffff;
+      --shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      --radius: 16px;
+    }
+
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #0b0b0c 0%, #121315 100%);
+      color: var(--text);
+    }
+
+    header {
+      background: linear-gradient(90deg, #111214 0%, #181a1d 55%, #2b1114 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 22px 32px;
+      box-shadow: var(--shadow);
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+
+    .brand-mark {
+      width: 18px;
+      height: 42px;
+      background: linear-gradient(180deg, #d13035 0%, #7f1519 100%);
+      clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+      box-shadow: 0 0 18px rgba(179, 32, 37, 0.35);
+    }
+
+    header h1 {
+      margin: 0;
+      font-size: 26px;
+      font-weight: 700;
+    }
+
+    .subtitle {
+      color: var(--text-soft);
+      font-size: 13px;
+      margin-top: 4px;
+    }
+
+    .container {
+      padding: 28px;
+      max-width: 1380px;
+      margin: 0 auto;
+    }
+
+    .grid {
+      display: grid;
+      gap: 18px;
+    }
+
+    .grid-4 {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+
+    .grid-2 {
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+    }
+
+    .card {
+      background: linear-gradient(180deg, #1b1d20 0%, #151618 100%);
+      border: 1px solid var(--border);
+      padding: 20px;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+
+    .card h2 {
+      margin-top: 0;
+      margin-bottom: 16px;
+      color: var(--white);
+    }
+
+    .section-title {
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1.2px;
+      color: #d2d5da;
+      margin-bottom: 8px;
+    }
+
+    .cards-resumo {
+      margin-bottom: 22px;
+    }
+
+    .resumo-card {
+      position: relative;
+      overflow: hidden;
+      background: linear-gradient(180deg, #1d1f23 0%, #161719 100%);
+    }
+
+    .resumo-card::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 6px;
+      height: 100%;
+      background: linear-gradient(180deg, #cb2a30 0%, #741417 100%);
+    }
+
+    .resumo-label {
+      color: var(--text-soft);
+      font-size: 14px;
+      margin-bottom: 10px;
+    }
+
+    .numero {
+      font-size: 34px;
+      font-weight: 700;
+      color: var(--white);
+    }
+
+    label {
+      display: block;
+      font-size: 13px;
+      color: #d4d7dc;
+      margin-bottom: 6px;
+    }
+
+    input {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 10px;
+      border: 1px solid #3a3e43;
+      background: #111214;
+      color: var(--white);
+      margin-bottom: 14px;
+      outline: none;
+    }
+
+    input[type="file"] {
+      padding: 10px;
+      background: #121315;
+      color: #d9d9d9;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px 16px;
+      border-radius: 10px;
+      border: none;
+      background: linear-gradient(180deg, #b32025 0%, #8c1b1f 100%);
+      color: white;
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .status {
+      margin-top: 8px;
+      font-size: 13px;
+      color: #d6d8dc;
+      background: var(--red-soft);
+      border: 1px solid rgba(179, 32, 37, 0.35);
+      padding: 10px 12px;
+      border-radius: 10px;
+      min-height: 18px;
+      white-space: pre-line;
+    }
+
+    .hint {
+      font-size: 12px;
+      color: var(--text-soft);
+      margin-top: -6px;
+      margin-bottom: 12px;
+    }
+
+    .spacer-top {
+      margin-top: 22px;
+    }
+
+    .lote-card {
+      border: 1px solid #2c3035;
+      border-radius: 14px;
+      padding: 16px;
+      margin-bottom: 14px;
+      background: #121315;
+    }
+
+    .lote-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: center;
+      flex-wrap: wrap;
+      cursor: pointer;
+    }
+
+    .pill {
+      display: inline-block;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      background: rgba(179, 32, 37, 0.16);
+      color: #ffd5d6;
+      border: 1px solid rgba(179, 32, 37, 0.35);
+      margin-right: 8px;
+      margin-bottom: 8px;
+    }
+
+    .docs-hidden {
+      display: none;
+    }
+
+    .doc-item {
+      margin-top: 10px;
+      border-top: 1px solid #2c3035;
+      padding-top: 10px;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .download-link {
+      display: inline-block;
+      padding: 8px 12px;
+      border-radius: 8px;
+      text-decoration: none;
+      color: white;
+      background: linear-gradient(180deg, #b32025 0%, #89181c 100%);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .muted {
+      color: var(--text-soft);
+      font-size: 13px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="brand-mark"></div>
+      <div>
+        <h1>Sistema de Controle de Entregas</h1>
+        <div class="subtitle">Gestão técnica de documentos, obras e recebimentos</div>
+      </div>
+    </div>
+  </header>
+
+  <div class="container">
+    <div class="grid grid-4 cards-resumo">
+      <div class="card resumo-card">
+        <div class="resumo-label">Total de documentos</div>
+        <div class="numero" id="totalDocumentos">0</div>
+      </div>
+
+      <div class="card resumo-card">
+        <div class="resumo-label">Total de obras</div>
+        <div class="numero" id="totalObras">0</div>
+      </div>
+
+      <div class="card resumo-card">
+        <div class="resumo-label">Total de engenheiros</div>
+        <div class="numero" id="totalEngenheiros">0</div>
+      </div>
+
+      <div class="card resumo-card">
+        <div class="resumo-label">Total de recebedores</div>
+        <div class="numero" id="totalRecebedores">0</div>
+      </div>
+    </div>
+
+    <div class="grid grid-2">
+      <div class="card">
+        <div class="section-title">Cadastro</div>
+        <h2>Cadastrar obra</h2>
+
+        <label for="obraCodigo">Código da obra</label>
+        <input type="text" id="obraCodigo" placeholder="Ex.: OBR-001" />
+
+        <label for="obraEngenheiro">Engenheiro responsável</label>
+        <input type="text" id="obraEngenheiro" placeholder="Nome do engenheiro" />
+
+        <button onclick="cadastrarObra()">Salvar obra</button>
+        <div class="status" id="statusObra"></div>
+      </div>
+
+      <div class="card">
+        <div class="section-title">Upload</div>
+        <h2>Enviar documento</h2>
+
+        <label for="fileDocs">Arquivos PDF ou ZIP</label>
+        <input type="file" id="fileDocs" multiple accept=".pdf,.zip" />
+
+        <label for="fileFolder">Pasta com documentos</label>
+        <input type="file" id="fileFolder" multiple webkitdirectory directory />
+
+        <div class="hint">PDF único entra como arquivo. Vários PDFs entram como pasta. ZIP entra como lote ZIP.</div>
+
+        <label for="obraManual">Código da obra</label>
+        <input type="text" id="obraManual" placeholder="Preenchido automaticamente" />
+
+        <label for="engenheiroManual">Engenheiro responsável</label>
+        <input type="text" id="engenheiroManual" placeholder="Informe o engenheiro" />
+
+        <label for="nomeDocumentoManual">Nome do documento</label>
+        <input type="text" id="nomeDocumentoManual" placeholder="Usado apenas em arquivo único" />
+
+        <label for="recebedor">Responsável pelo recebimento</label>
+        <input type="text" id="recebedor" placeholder="Nome do responsável" />
+
+        <button onclick="upload()">Enviar documento(s)</button>
+        <div class="status" id="statusUpload"></div>
+      </div>
+    </div>
+
+    <div class="card spacer-top">
+      <div class="section-title">Lista</div>
+      <h2>Lotes e documentos</h2>
+      <div id="listaLotes"></div>
+    </div>
+  </div>
+
+  <script>
+    async function carregarResumo() {
+      try {
+        const res = await fetch('/documents/stats/resumo');
+        const data = await res.json();
+
+        document.getElementById('totalDocumentos').innerText = data.total_documentos || 0;
+        document.getElementById('totalObras').innerText = data.total_obras || 0;
+        document.getElementById('totalEngenheiros').innerText = data.total_engenheiros || 0;
+        document.getElementById('totalRecebedores').innerText = data.total_recebedores || 0;
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
+    async function cadastrarObra() {
+      const codigo = document.getElementById('obraCodigo').value;
+      const engenheiro = document.getElementById('obraEngenheiro').value;
+      const status = document.getElementById('statusObra');
+
+      try {
+        const res = await fetch('/obras', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ codigo, engenheiro })
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro ao cadastrar obra.');
+
+        status.innerText = 'Obra cadastrada com sucesso.';
+        document.getElementById('obraCodigo').value = '';
+        document.getElementById('obraEngenheiro').value = '';
+      } catch (error) {
+        status.innerText = error.message;
+      }
+    }
+
+    function extrairInfoArquivo(file) {
+      if (!file) return { codigo: '', docNome: '' };
+
+      const nome = file.name.replace(/\.[^/.]+$/, '');
+      const nomeLimpo = nome.replace(/[_-]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+      const match =
+        nomeLimpo.match(/\b([A-Za-z]{2,5}-?\d{1,5})\b/) ||
+        nomeLimpo.match(/\b(\d{2,5})\b/);
+
+      let codigo = '';
+      let docNome = nomeLimpo;
+
+      if (match) {
+        codigo = match[1].toUpperCase();
+        const regexCodigo = new RegExp(codigo.replace('-', '[- ]?'), 'i');
+        docNome = nomeLimpo.replace(regexCodigo, '').trim() || nomeLimpo;
+      }
+
+      return { codigo, docNome };
+    }
+
+    function preencherCampos(codigo, docNome) {
+      document.getElementById('obraManual').value = codigo || '';
+      document.getElementById('nomeDocumentoManual').value = docNome || '';
+    }
+
+    document.getElementById('fileDocs').addEventListener('change', function () {
+      const files = [...this.files];
+      if (!files.length) return;
+
+      const { codigo, docNome } = extrairInfoArquivo(files[0]);
+      preencherCampos(codigo, files.length === 1 ? docNome : '');
+    });
+
+    document.getElementById('fileFolder').addEventListener('change', function () {
+      const files = [...this.files];
+      if (!files.length) return;
+
+      const primeiroPdf = files.find(f => f.name.toLowerCase().endsWith('.pdf'));
+      if (!primeiroPdf) return;
+
+      const { codigo, docNome } = extrairInfoArquivo(primeiroPdf);
+      preencherCampos(codigo, docNome);
+    });
+
+    async function upload() {
+      const fileDocs = [...document.getElementById('fileDocs').files];
+      const fileFolder = [...document.getElementById('fileFolder').files];
+      const todosArquivos = [...fileDocs, ...fileFolder];
+
+      const obraManual = document.getElementById('obraManual').value;
+      const engenheiroManual = document.getElementById('engenheiroManual').value;
+      const nomeDocumentoManual = document.getElementById('nomeDocumentoManual').value;
+      const recebedor = document.getElementById('recebedor').value;
+      const status = document.getElementById('statusUpload');
+
+      if (!todosArquivos.length) {
+        status.innerText = 'Selecione PDFs, ZIP ou uma pasta.';
+        return;
+      }
+
+      const formData = new FormData();
+      todosArquivos.forEach(file => formData.append('files', file));
+      formData.append('obra_manual', obraManual);
+      formData.append('engenheiro_manual', engenheiroManual);
+      formData.append('nome_documento_manual', nomeDocumentoManual);
+      formData.append('responsavel_recebimento', recebedor);
+
+      try {
+        status.innerText = `Processando ${todosArquivos.length} arquivo(s)...`;
+
+        const res = await fetch('/documents/upload', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Erro ao enviar documentos.');
+
+        status.innerText = `✅ ${data.total} documento(s) processado(s) no lote "${data.nomeLote}"`;
+
+        document.getElementById('fileDocs').value = '';
+        document.getElementById('fileFolder').value = '';
+        document.getElementById('obraManual').value = '';
+        document.getElementById('engenheiroManual').value = '';
+        document.getElementById('nomeDocumentoManual').value = '';
+        document.getElementById('recebedor').value = '';
+
+        await carregarResumo();
+        await carregarLotes();
+      } catch (error) {
+        console.error(error);
+        status.innerText = error.message;
+      }
+    }
+
+    async function carregarLotes() {
+      try {
+        const res = await fetch('/documents/lotes');
+        const lotes = await res.json();
+
+        const container = document.getElementById('listaLotes');
+        container.innerHTML = '';
+
+        for (const lote of lotes) {
+          const div = document.createElement('div');
+          div.className = 'lote-card';
+
+          div.innerHTML = `
+            <div class="lote-top" onclick="toggleLote(${lote.id})">
+              <div>
+                <div style="font-weight:700; font-size:16px;">${lote.nome || 'Lote'}</div>
+                <div class="muted" style="margin-top:6px;">
+                  <span class="pill">${lote.tipo || 'arquivo'}</span>
+                  <span class="pill">${lote.total_documentos || 0} documento(s)</span>
+                  <span class="pill">Obra: ${lote.obra || 'não informada'}</span>
+                  <span class="pill">Eng.: ${lote.engenheiro || 'não informado'}</span>
+                  <span class="pill">Receb.: ${lote.responsavel_recebimento || 'não informado'}</span>
+                </div>
+              </div>
+              <div class="muted">Clique para abrir</div>
+            </div>
+            <div id="docs-${lote.id}" class="docs-hidden"></div>
+          `;
+
+          container.appendChild(div);
+        }
+      } catch (error) {
+        console.error('Erro ao carregar lotes:', error);
+      }
+    }
+
+    async function toggleLote(id) {
+      const area = document.getElementById(`docs-${id}`);
+
+      if (!area.classList.contains('docs-hidden')) {
+        area.classList.add('docs-hidden');
+        area.innerHTML = '';
+        return;
+      }
+
+      try {
+        const res = await fetch(`/documents/lotes/${id}/documentos`);
+        const docs = await res.json();
+
+        area.innerHTML = '';
+
+        docs.forEach(doc => {
+          const item = document.createElement('div');
+          item.className = 'doc-item';
+          item.innerHTML = `
+            <div>
+              <div style="font-weight:700;">${doc.nome_documento || ''}</div>
+              <div class="muted" style="margin-top:4px;">
+                ${doc.tipo || 'Projeto'} | Revisão: ${doc.revisao || ''} | Recebido por: ${doc.responsavel_recebimento || ''}
+              </div>
+            </div>
+            <div>
+              <a class="download-link" href="/documents/download/${doc.id}" target="_blank">Baixar</a>
+            </div>
+          `;
+          area.appendChild(item);
+        });
+
+        area.classList.remove('docs-hidden');
+      } catch (error) {
+        console.error('Erro ao abrir lote:', error);
+      }
+    }
+
+    carregarResumo();
+    carregarLotes();
+  </script>
+</body>
+</html>
