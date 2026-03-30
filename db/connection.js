@@ -1,18 +1,18 @@
-const sqlite3 = require('sqlite3').verbose();
-const fs = require('fs');
-const path = require('path');
+const { Pool } = require('pg');
 
-const dataDir = process.env.DATA_DIR || path.join(__dirname, '..');
-fs.mkdirSync(dataDir, { recursive: true });
+const isRender = !!process.env.DATABASE_URL;
 
-const dbPath = path.join(dataDir, 'database.db');
+const pool = new Pool(
+  isRender
+    ? {
+        connectionString: process.env.DATABASE_URL,
+        ssl: { rejectUnauthorized: false }
+      }
+    : {
+        connectionString:
+          process.env.DATABASE_URL ||
+          'postgresql://postgres:postgres@localhost:5432/controle_entregas'
+      }
+);
 
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error('Erro ao conectar:', err.message);
-  } else {
-    console.log('Banco conectado em:', dbPath);
-  }
-});
-
-module.exports = db;
+module.exports = pool;

@@ -10,20 +10,12 @@ const { extractData } = require('../services/aiService');
 
 const router = express.Router();
 
-/* =========================
-   📁 CONFIGURAÇÃO RENDER
-========================= */
-
 const dataDir = process.env.DATA_DIR || path.join(__dirname, '..');
 const uploadDir = path.join(dataDir, 'uploads');
 const tempZipDir = path.join(uploadDir, 'tmp_zip');
 
 fs.mkdirSync(uploadDir, { recursive: true });
 fs.mkdirSync(tempZipDir, { recursive: true });
-
-/* =========================
-   📦 MULTER
-========================= */
 
 const storage = multer.diskStorage({
   destination: uploadDir,
@@ -39,53 +31,24 @@ const upload = multer({
   limits: { files: 500, fileSize: 50 * 1024 * 1024 }
 });
 
-/* =========================
-   🔧 HELPERS
-========================= */
-
-function runAsync(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function (err) {
-      if (err) reject(err);
-      else resolve(this);
-    });
-  });
-}
-
-function allAsync(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
-}
-
-function getAsync(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
-}
-
 async function buscarObraPorCodigo(codigo) {
   if (!codigo) return null;
-  return await getAsync(
-    `SELECT * FROM obras WHERE codigo = ? OR nome = ? LIMIT 1`,
-    [codigo, codigo]
+
+  const result = await db.query(
+    `SELECT * FROM obras WHERE codigo = $1 OR nome = $1 LIMIT 1`,
+    [codigo]
   );
+
+  return result.rows[0] || null;
 }
 
-/* =========================
-   📦 LOTE
-========================= */
-
 async function criarLote({ nome, tipo, obra, engenheiro, responsavel_recebimento }) {
-  const result = await runAsync(
-    `INSERT INTO lotes_upload (nome, tipo, obra, engenheiro, responsavel_recebimento, data_upload)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+  const result = await db.query(
+    `
+    INSERT INTO lotes_upload (nome, tipo, obra, engenheiro, responsavel_recebimento, data_upload)
+    VALUES ($1, $2, $3, $4, $5, $6)
+    RETURNING id
+    `,
     [
       nome || '',
       tipo || 'arquivo',
@@ -95,31 +58,25 @@ async function criarLote({ nome, tipo, obra, engenheiro, responsavel_recebimento
       new Date().toISOString().slice(0, 10)
     ]
   );
-  return result.lastID;
+
+  return result.rows[0].id;
 }
 
 async function atualizarLote(id, { nome, obra, engenheiro, responsavel_recebimento }) {
-  await runAsync(
-    `UPDATE lotes_upload
-     SET nome = ?, obra = ?, engenheiro = ?, responsavel_recebimento = ?
-     WHERE id = ?`,
-    [
-      nome || '',
-      obra || '',
-      engenheiro || '',
-      responsavel_recebimento || '',
-      id
-    ]
+  await db.query(
+    `
+    UPDATE lotes_upload
+    SET nome = $1, obra = $2, engenheiro = $3, responsavel_recebimento = $4
+    WHERE id = $5
+    `,
+    [nome || '', obra || '', engenheiro || '', responsavel_recebimento || '', id]
   );
 }
 
-/* =========================
-   💾 SALVAR DOC
-========================= */
-
 async function salvarDocumentoNoBanco(dados) {
-  const result = await runAsync(
-    `INSERT INTO documentos (
+  const result = await db.query(
+    `
+    INSERT INTO documentos (
       lote_id,
       obra,
       engenheiro,
@@ -131,7 +88,9 @@ async function salvarDocumentoNoBanco(dados) {
       data_entrega,
       responsavel_recebimento,
       arquivo
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+    RETURNING id
+    `,
     [
       dados.lote_id,
       dados.obra,
@@ -146,22 +105,15 @@ async function salvarDocumentoNoBanco(dados) {
       dados.arquivo
     ]
   );
-  return result.lastID;
-}
 
-/* =========================
-   📛 NOME DO LOTE
-========================= */
+  return result.rows[0].id;
+}
 
 function nomeLoteAutomatico(tipo, obra, nomeBase) {
-  if (tipo === 'zip') return `ZIP - ${obra}`;
-  if (tipo === 'pasta') return `Pasta - ${obra}`;
-  return nomeBase;
+  if (tipo === 'zip') return obra ? `ZIP - ${obra}` : 'ZIP';
+  if (tipo === 'pasta') return obra ? `Pasta - ${obra}` : 'Pasta de documentos';
+  return nomeBase || 'Arquivo';
 }
-
-/* =========================
-   📄 PROCESSAR PDF
-========================= */
 
 async function processarPdf(filePath, originalName, camposFixos, loteId, nomeManualUnico = '') {
   let text = '';
@@ -182,6 +134,7 @@ async function processarPdf(filePath, originalName, camposFixos, loteId, nomeMan
   const engenheiroFinal =
     camposFixos.engenheiro_manual ||
     obraCadastrada?.engenheiro ||
+    aiData.engenheiro ||
     'Não identificado';
 
   const documentoFinal =
@@ -190,6 +143,7 @@ async function processarPdf(filePath, originalName, camposFixos, loteId, nomeMan
     originalName;
 
   const tipoFinal = aiData.tipo || 'Projeto';
+  const recebimentoFinal = camposFixos.responsavel_recebimento || '';
 
   const id = await salvarDocumentoNoBanco({
     lote_id: loteId,
@@ -201,7 +155,7 @@ async function processarPdf(filePath, originalName, camposFixos, loteId, nomeMan
     vias: aiData.vias || 1,
     data_documento: aiData.data || '',
     data_entrega: new Date().toISOString().slice(0, 10),
-    responsavel_recebimento: camposFixos.responsavel_recebimento || '',
+    responsavel_recebimento: recebimentoFinal,
     arquivo: filePath
   });
 
@@ -211,13 +165,10 @@ async function processarPdf(filePath, originalName, camposFixos, loteId, nomeMan
     obra: obraFinal,
     engenheiro: engenheiroFinal,
     tipo: tipoFinal,
-    revisao: aiData.revisao || 'R00'
+    revisao: aiData.revisao || 'R00',
+    responsavel_recebimento: recebimentoFinal
   };
 }
-
-/* =========================
-   🚀 UPLOAD
-========================= */
 
 router.post('/upload', upload.array('files', 500), async (req, res) => {
   try {
@@ -231,18 +182,21 @@ router.post('/upload', upload.array('files', 500), async (req, res) => {
       engenheiro_manual: req.body.engenheiro_manual || ''
     };
 
+    const nomeDocumentoManual = req.body.nome_documento_manual || '';
     const resultados = [];
     let ignorados = 0;
 
-    const temZip = req.files.some(f => f.originalname.endsWith('.zip'));
-    const todosPdf = req.files.every(f => f.originalname.endsWith('.pdf'));
+    const temZip = req.files.some(f => path.extname(f.originalname).toLowerCase() === '.zip');
+    const todosPdf = req.files.every(f => path.extname(f.originalname).toLowerCase() === '.pdf');
 
     let tipoLote = 'arquivo';
     if (temZip) tipoLote = 'zip';
     else if (req.files.length > 1 && todosPdf) tipoLote = 'pasta';
 
+    const nomeBasePrimeiro = req.files[0]?.originalname || 'Arquivo';
+
     const loteId = await criarLote({
-      nome: req.files[0].originalname,
+      nome: nomeBasePrimeiro,
       tipo: tipoLote,
       obra: '',
       engenheiro: '',
@@ -253,28 +207,49 @@ router.post('/upload', upload.array('files', 500), async (req, res) => {
       const ext = path.extname(file.originalname).toLowerCase();
 
       if (ext === '.pdf') {
-        const r = await processarPdf(file.path, file.originalname, camposFixos, loteId);
+        const usarNomeManual = req.files.length === 1 ? nomeDocumentoManual : '';
+        const r = await processarPdf(file.path, file.originalname, camposFixos, loteId, usarNomeManual);
         resultados.push(r);
+        continue;
       }
 
-      else if (ext === '.zip') {
+      if (ext === '.zip') {
         const zip = new AdmZip(file.path);
         const entries = zip.getEntries();
 
         for (const entry of entries) {
-          if (!entry.entryName.endsWith('.pdf')) continue;
+          if (entry.isDirectory) {
+            ignorados++;
+            continue;
+          }
 
-          const tempPath = path.join(tempZipDir, Date.now() + '_' + entry.entryName);
+          if (!entry.entryName.toLowerCase().endsWith('.pdf')) {
+            ignorados++;
+            continue;
+          }
+
+          const nomeInterno = path.basename(entry.entryName);
+          const tempPath = path.join(
+            tempZipDir,
+            Date.now() + '_' + Math.floor(Math.random() * 100000) + '_' + nomeInterno
+          );
+
           fs.writeFileSync(tempPath, entry.getData());
 
-          const r = await processarPdf(tempPath, entry.entryName, camposFixos, loteId);
+          const r = await processarPdf(tempPath, nomeInterno, camposFixos, loteId);
           resultados.push(r);
         }
+
+        continue;
       }
 
-      else {
-        ignorados++;
-      }
+      ignorados++;
+    }
+
+    if (resultados.length === 0) {
+      return res.status(400).json({
+        error: 'Nenhum PDF válido encontrado. Envie PDFs, ZIP com PDFs ou uma pasta com PDFs.'
+      });
     }
 
     const primeiro = resultados[0];
@@ -299,67 +274,84 @@ router.post('/upload', upload.array('files', 500), async (req, res) => {
       loteId,
       nomeLote: nomeFinal
     });
-
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Erro no upload.' });
   }
 });
 
-/* =========================
-   📊 LISTAR LOTES
-========================= */
-
 router.get('/lotes', async (req, res) => {
-  const rows = await allAsync(`
-    SELECT l.*, COUNT(d.id) as total_documentos
-    FROM lotes_upload l
-    LEFT JOIN documentos d ON d.lote_id = l.id
-    GROUP BY l.id
-    ORDER BY l.id DESC
-  `);
-  res.json(rows);
-});
+  try {
+    const result = await db.query(`
+      SELECT
+        l.*,
+        COUNT(d.id) AS total_documentos
+      FROM lotes_upload l
+      LEFT JOIN documentos d ON d.lote_id = l.id
+      GROUP BY l.id
+      ORDER BY l.id DESC
+    `);
 
-/* =========================
-   📂 DOCUMENTOS DO LOTE
-========================= */
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao listar lotes:', error);
+    res.status(500).json({ error: 'Erro ao listar lotes.' });
+  }
+});
 
 router.get('/lotes/:id/documentos', async (req, res) => {
-  const rows = await allAsync(
-    `SELECT * FROM documentos WHERE lote_id = ?`,
-    [req.params.id]
-  );
-  res.json(rows);
+  try {
+    const result = await db.query(
+      `SELECT * FROM documentos WHERE lote_id = $1 ORDER BY id DESC`,
+      [req.params.id]
+    );
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Erro ao listar documentos do lote:', error);
+    res.status(500).json({ error: 'Erro ao listar documentos do lote.' });
+  }
 });
-
-/* =========================
-   📥 DOWNLOAD
-========================= */
 
 router.get('/download/:id', async (req, res) => {
-  const doc = await getAsync(`SELECT * FROM documentos WHERE id = ?`, [req.params.id]);
+  try {
+    const result = await db.query(
+      `SELECT * FROM documentos WHERE id = $1`,
+      [req.params.id]
+    );
 
-  if (!doc) return res.status(404).send('Não encontrado');
+    const doc = result.rows[0];
 
-  res.download(doc.arquivo);
+    if (!doc) {
+      return res.status(404).send('Não encontrado');
+    }
+
+    if (!doc.arquivo || !fs.existsSync(doc.arquivo)) {
+      return res.status(404).send('Arquivo não encontrado');
+    }
+
+    res.download(doc.arquivo);
+  } catch (error) {
+    console.error('Erro ao baixar documento:', error);
+    res.status(500).send('Erro ao baixar documento');
+  }
 });
 
-/* =========================
-   📊 RESUMO
-========================= */
+router.get('/stats/resumo', async (req, res) => {
+  try {
+    const result = await db.query(`
+      SELECT
+        COUNT(*) AS total_documentos,
+        COUNT(DISTINCT obra) AS total_obras,
+        COUNT(DISTINCT engenheiro) AS total_engenheiros,
+        COUNT(DISTINCT responsavel_recebimento) AS total_recebedores
+      FROM documentos
+    `);
 
-router.get('/stats/resumo', (req, res) => {
-  db.get(`
-    SELECT
-      COUNT(*) AS total_documentos,
-      COUNT(DISTINCT obra) AS total_obras,
-      COUNT(DISTINCT engenheiro) AS total_engenheiros,
-      COUNT(DISTINCT responsavel_recebimento) AS total_recebedores
-    FROM documentos
-  `, [], (err, row) => {
-    res.json(row);
-  });
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Erro ao buscar resumo:', error);
+    res.status(500).json({ error: 'Erro ao buscar resumo.' });
+  }
 });
 
 module.exports = router;

@@ -1,19 +1,45 @@
-const express = require('express');
-const cors = require('cors');
-require('./db/init');
+const db = require('./connection');
 
-const app = express();
+async function init() {
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS obras (
+      id SERIAL PRIMARY KEY,
+      nome TEXT,
+      codigo TEXT UNIQUE,
+      engenheiro TEXT
+    );
+  `);
 
-app.use(cors());
-app.use(express.json());
-app.use('/uploads', express.static('uploads'));
-app.use(express.static('public'));
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS lotes_upload (
+      id SERIAL PRIMARY KEY,
+      nome TEXT,
+      tipo TEXT,
+      obra TEXT,
+      engenheiro TEXT,
+      responsavel_recebimento TEXT,
+      data_upload TEXT
+    );
+  `);
 
-app.use('/documents', require('./routes/documents'));
-app.use('/obras', require('./routes/obras'));
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS documentos (
+      id SERIAL PRIMARY KEY,
+      lote_id INTEGER REFERENCES lotes_upload(id) ON DELETE SET NULL,
+      obra TEXT,
+      engenheiro TEXT,
+      nome_documento TEXT,
+      tipo TEXT,
+      revisao TEXT,
+      vias INTEGER,
+      data_documento TEXT,
+      data_entrega TEXT,
+      responsavel_recebimento TEXT,
+      arquivo TEXT
+    );
+  `);
 
-const PORT = process.env.PORT || 3000;
+  console.log('PostgreSQL inicializado com sucesso.');
+}
 
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-});
+module.exports = init;
