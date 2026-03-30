@@ -10,11 +10,20 @@ const { extractData } = require('../services/aiService');
 
 const router = express.Router();
 
-const uploadDir = path.join(__dirname, '..', 'uploads');
+/* =========================
+   📁 CONFIGURAÇÃO RENDER
+========================= */
+
+const dataDir = process.env.DATA_DIR || path.join(__dirname, '..');
+const uploadDir = path.join(dataDir, 'uploads');
 const tempZipDir = path.join(uploadDir, 'tmp_zip');
 
 fs.mkdirSync(uploadDir, { recursive: true });
 fs.mkdirSync(tempZipDir, { recursive: true });
+
+/* =========================
+   📦 MULTER
+========================= */
 
 const storage = multer.diskStorage({
   destination: uploadDir,
@@ -29,6 +38,10 @@ const upload = multer({
   storage,
   limits: { files: 500, fileSize: 50 * 1024 * 1024 }
 });
+
+/* =========================
+   🔧 HELPERS
+========================= */
 
 function runAsync(sql, params = []) {
   return new Promise((resolve, reject) => {
@@ -65,6 +78,10 @@ async function buscarObraPorCodigo(codigo) {
   );
 }
 
+/* =========================
+   📦 LOTE
+========================= */
+
 async function criarLote({ nome, tipo, obra, engenheiro, responsavel_recebimento }) {
   const result = await runAsync(
     `INSERT INTO lotes_upload (nome, tipo, obra, engenheiro, responsavel_recebimento, data_upload)
@@ -95,6 +112,10 @@ async function atualizarLote(id, { nome, obra, engenheiro, responsavel_recebimen
     ]
   );
 }
+
+/* =========================
+   💾 SALVAR DOC
+========================= */
 
 async function salvarDocumentoNoBanco(dados) {
   const result = await runAsync(
@@ -128,15 +149,19 @@ async function salvarDocumentoNoBanco(dados) {
   return result.lastID;
 }
 
-function nomeLoteAutomatico(tipoLote, codigoObra, nomeBase) {
-  if (tipoLote === 'zip') {
-    return codigoObra ? `ZIP - ${codigoObra}` : `ZIP - ${nomeBase}`;
-  }
-  if (tipoLote === 'pasta') {
-    return codigoObra ? `Pasta - ${codigoObra}` : 'Pasta de documentos';
-  }
-  return nomeBase || 'Arquivo';
+/* =========================
+   📛 NOME DO LOTE
+========================= */
+
+function nomeLoteAutomatico(tipo, obra, nomeBase) {
+  if (tipo === 'zip') return `ZIP - ${obra}`;
+  if (tipo === 'pasta') return `Pasta - ${obra}`;
+  return nomeBase;
 }
+
+/* =========================
+   📄 PROCESSAR PDF
+========================= */
 
 async function processarPdf(filePath, originalName, camposFixos, loteId, nomeManualUnico = '') {
   let text = '';
@@ -144,22 +169,18 @@ async function processarPdf(filePath, originalName, camposFixos, loteId, nomeMan
   try {
     text = await extractText(filePath);
   } catch (error) {
-    console.log('Erro ao ler PDF, continuando:', originalName);
+    console.log('Erro ao ler PDF:', originalName);
   }
 
   const aiData = await extractData(text, originalName);
-  const obraDetectada = camposFixos.obra_manual || aiData.obra || 'NÃO IDENTIFICADO';
 
+  const obraDetectada = camposFixos.obra_manual || aiData.obra || 'NÃO IDENTIFICADO';
   const obraCadastrada = await buscarObraPorCodigo(obraDetectada);
 
-  const obraFinal =
-    camposFixos.obra_manual ||
-    obraDetectada ||
-    'NÃO IDENTIFICADO';
+  const obraFinal = obraDetectada;
 
   const engenheiroFinal =
     camposFixos.engenheiro_manual ||
-    aiData.engenheiro ||
     obraCadastrada?.engenheiro ||
     'Não identificado';
 
@@ -169,7 +190,6 @@ async function processarPdf(filePath, originalName, camposFixos, loteId, nomeMan
     originalName;
 
   const tipoFinal = aiData.tipo || 'Projeto';
-  const recebimentoFinal = camposFixos.responsavel_recebimento || '';
 
   const id = await salvarDocumentoNoBanco({
     lote_id: loteId,
@@ -181,21 +201,23 @@ async function processarPdf(filePath, originalName, camposFixos, loteId, nomeMan
     vias: aiData.vias || 1,
     data_documento: aiData.data || '',
     data_entrega: new Date().toISOString().slice(0, 10),
-    responsavel_recebimento: recebimentoFinal,
+    responsavel_recebimento: camposFixos.responsavel_recebimento || '',
     arquivo: filePath
   });
 
   return {
     id,
-    arquivo: originalName,
     documento: documentoFinal,
-    tipo: tipoFinal,
     obra: obraFinal,
     engenheiro: engenheiroFinal,
-    responsavel_recebimento: recebimentoFinal,
+    tipo: tipoFinal,
     revisao: aiData.revisao || 'R00'
   };
 }
+
+/* =========================
+   🚀 UPLOAD
+========================= */
 
 router.post('/upload', upload.array('files', 500), async (req, res) => {
   try {
@@ -209,23 +231,21 @@ router.post('/upload', upload.array('files', 500), async (req, res) => {
       engenheiro_manual: req.body.engenheiro_manual || ''
     };
 
-    const nomeDocumentoManual = req.body.nome_documento_manual || '';
     const resultados = [];
     let ignorados = 0;
 
-    const temZip = req.files.some(f => path.extname(f.originalname).toLowerCase() === '.zip');
-    const todosPdf = req.files.every(f => path.extname(f.originalname).toLowerCase() === '.pdf');
+    const temZip = req.files.some(f => f.originalname.endsWith('.zip'));
+    const todosPdf = req.files.every(f => f.originalname.endsWith('.pdf'));
 
     let tipoLote = 'arquivo';
     if (temZip) tipoLote = 'zip';
     else if (req.files.length > 1 && todosPdf) tipoLote = 'pasta';
 
-    const nomeBasePrimeiro = req.files[0]?.originalname || 'Arquivo';
     const loteId = await criarLote({
-      nome: nomeBasePrimeiro,
+      nome: req.files[0].originalname,
       tipo: tipoLote,
-      obra: camposFixos.obra_manual,
-      engenheiro: camposFixos.engenheiro_manual,
+      obra: '',
+      engenheiro: '',
       responsavel_recebimento: camposFixos.responsavel_recebimento
     });
 
@@ -233,75 +253,43 @@ router.post('/upload', upload.array('files', 500), async (req, res) => {
       const ext = path.extname(file.originalname).toLowerCase();
 
       if (ext === '.pdf') {
-        const usarNomeManual = req.files.length === 1 ? nomeDocumentoManual : '';
-        const resultado = await processarPdf(file.path, file.originalname, camposFixos, loteId, usarNomeManual);
-        resultados.push(resultado);
-        continue;
+        const r = await processarPdf(file.path, file.originalname, camposFixos, loteId);
+        resultados.push(r);
       }
 
-      if (ext === '.zip') {
+      else if (ext === '.zip') {
         const zip = new AdmZip(file.path);
-        const zipEntries = zip.getEntries();
+        const entries = zip.getEntries();
 
-        for (const entry of zipEntries) {
-          if (entry.isDirectory) {
-            ignorados++;
-            continue;
-          }
+        for (const entry of entries) {
+          if (!entry.entryName.endsWith('.pdf')) continue;
 
-          const entryExt = path.extname(entry.entryName).toLowerCase();
-          if (entryExt !== '.pdf') {
-            ignorados++;
-            continue;
-          }
+          const tempPath = path.join(tempZipDir, Date.now() + '_' + entry.entryName);
+          fs.writeFileSync(tempPath, entry.getData());
 
-          const nomeBase = path.basename(entry.entryName);
-          const caminhoExtraido = path.join(
-            tempZipDir,
-            Date.now() + '_' + Math.floor(Math.random() * 100000) + '_' + nomeBase
-          );
-
-          fs.writeFileSync(caminhoExtraido, entry.getData());
-
-          const resultado = await processarPdf(caminhoExtraido, nomeBase, camposFixos, loteId, '');
-          resultados.push(resultado);
+          const r = await processarPdf(tempPath, entry.entryName, camposFixos, loteId);
+          resultados.push(r);
         }
-
-        continue;
       }
 
-      ignorados++;
+      else {
+        ignorados++;
+      }
     }
 
-    if (resultados.length === 0) {
-      return res.status(400).json({
-        error: 'Nenhum PDF válido encontrado. Envie PDFs, ZIP com PDFs ou uma pasta com PDFs.'
-      });
-    }
+    const primeiro = resultados[0];
 
-    const primeiroResultado = resultados[0];
-
-    const obraLote = camposFixos.obra_manual || primeiroResultado.obra || '';
-    const engenheiroLote =
-      camposFixos.engenheiro_manual ||
-      primeiroResultado.engenheiro ||
-      '';
-    const recebimentoLote =
-      camposFixos.responsavel_recebimento ||
-      primeiroResultado.responsavel_recebimento ||
-      '';
-
-    const nomeLote = nomeLoteAutomatico(
+    const nomeFinal = nomeLoteAutomatico(
       tipoLote,
-      obraLote,
-      tipoLote === 'arquivo' ? (primeiroResultado.documento || nomeBasePrimeiro) : nomeBasePrimeiro
+      primeiro.obra,
+      primeiro.documento
     );
 
     await atualizarLote(loteId, {
-      nome: nomeLote,
-      obra: obraLote,
-      engenheiro: engenheiroLote,
-      responsavel_recebimento: recebimentoLote
+      nome: nomeFinal,
+      obra: primeiro.obra,
+      engenheiro: primeiro.engenheiro,
+      responsavel_recebimento: camposFixos.responsavel_recebimento
     });
 
     res.json({
@@ -309,96 +297,69 @@ router.post('/upload', upload.array('files', 500), async (req, res) => {
       total: resultados.length,
       ignorados,
       loteId,
-      tipoLote,
-      nomeLote,
-      arquivos: resultados
+      nomeLote: nomeFinal
     });
+
   } catch (error) {
-    console.error('Erro no upload:', error);
-    res.status(500).json({ error: 'Erro no upload dos documentos.' });
+    console.error(error);
+    res.status(500).json({ error: 'Erro no upload.' });
   }
 });
+
+/* =========================
+   📊 LISTAR LOTES
+========================= */
 
 router.get('/lotes', async (req, res) => {
-  try {
-    const rows = await allAsync(`
-      SELECT
-        l.id,
-        l.nome,
-        l.tipo,
-        l.obra,
-        l.engenheiro,
-        l.responsavel_recebimento,
-        l.data_upload,
-        COUNT(d.id) AS total_documentos
-      FROM lotes_upload l
-      LEFT JOIN documentos d ON d.lote_id = l.id
-      GROUP BY l.id
-      ORDER BY l.id DESC
-    `);
-    res.json(rows);
-  } catch (error) {
-    console.error('Erro ao listar lotes:', error);
-    res.status(500).json({ error: 'Erro ao listar lotes.' });
-  }
+  const rows = await allAsync(`
+    SELECT l.*, COUNT(d.id) as total_documentos
+    FROM lotes_upload l
+    LEFT JOIN documentos d ON d.lote_id = l.id
+    GROUP BY l.id
+    ORDER BY l.id DESC
+  `);
+  res.json(rows);
 });
+
+/* =========================
+   📂 DOCUMENTOS DO LOTE
+========================= */
 
 router.get('/lotes/:id/documentos', async (req, res) => {
-  try {
-    const rows = await allAsync(
-      `SELECT * FROM documentos WHERE lote_id = ? ORDER BY id DESC`,
-      [req.params.id]
-    );
-    res.json(rows);
-  } catch (error) {
-    console.error('Erro ao listar documentos do lote:', error);
-    res.status(500).json({ error: 'Erro ao listar documentos do lote.' });
-  }
+  const rows = await allAsync(
+    `SELECT * FROM documentos WHERE lote_id = ?`,
+    [req.params.id]
+  );
+  res.json(rows);
 });
 
+/* =========================
+   📥 DOWNLOAD
+========================= */
+
+router.get('/download/:id', async (req, res) => {
+  const doc = await getAsync(`SELECT * FROM documentos WHERE id = ?`, [req.params.id]);
+
+  if (!doc) return res.status(404).send('Não encontrado');
+
+  res.download(doc.arquivo);
+});
+
+/* =========================
+   📊 RESUMO
+========================= */
+
 router.get('/stats/resumo', (req, res) => {
-  db.get(
-    `
+  db.get(`
     SELECT
       COUNT(*) AS total_documentos,
       COUNT(DISTINCT obra) AS total_obras,
       COUNT(DISTINCT engenheiro) AS total_engenheiros,
       COUNT(DISTINCT responsavel_recebimento) AS total_recebedores
     FROM documentos
-    `,
-    [],
-    (err, row) => {
-      if (err) {
-        console.error('Erro ao buscar resumo:', err);
-        return res.status(500).json({ error: 'Erro ao buscar resumo.' });
-      }
-      res.json(row);
-    }
-  );
-});
-
-router.get('/download/:id', async (req, res) => {
-  try {
-    const documento = await getAsync(`SELECT * FROM documentos WHERE id = ?`, [req.params.id]);
-
-    if (!documento) {
-      return res.status(404).send('Documento não encontrado.');
-    }
-
-    if (!documento.arquivo || !fs.existsSync(documento.arquivo)) {
-      return res.status(404).send('Arquivo não encontrado no servidor.');
-    }
-
-    const extensao = path.extname(documento.arquivo) || '.pdf';
-    const nomeSeguro = (documento.nome_documento || `documento_${documento.id}`)
-      .replace(/[\/\\:*?"<>|]/g, '_');
-
-    const nomeDownload = `${nomeSeguro}${extensao}`;
-    res.download(documento.arquivo, nomeDownload);
-  } catch (error) {
-    console.error('Erro ao buscar documento:', error);
-    res.status(500).send('Erro ao buscar documento.');
-  }
+  `, [], (err, row) => {
+    res.json(row);
+  });
 });
 
 module.exports = router;
