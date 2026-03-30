@@ -1,18 +1,10 @@
 const { Pool } = require('pg');
 
-const isRender = !!process.env.DATABASE_URL;
-
-const pool = new Pool(
-  isRender
-    ? {
-        connectionString: process.env.DATABASE_URL,
-        ssl: { rejectUnauthorized: false }
-      }
-    : {
-        connectionString:
-          process.env.DATABASE_URL ||
-          'postgresql://postgres:postgres@localhost:5432/controle_entregas'
-      }
-);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: {
+    rejectUnauthorized: false
+  }
+});
 
 module.exports = pool;
