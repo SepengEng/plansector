@@ -10,8 +10,7 @@ const { extractData } = require('../services/aiService');
 
 const router = express.Router();
 
-const dataDir = process.env.DATA_DIR || path.join(__dirname, '..');
-const uploadDir = path.join(dataDir, 'uploads');
+const uploadDir = path.join(__dirname, '..', 'uploads');
 const tempZipDir = path.join(uploadDir, 'tmp_zip');
 
 fs.mkdirSync(uploadDir, { recursive: true });
