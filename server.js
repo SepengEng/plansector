@@ -42,4 +42,4 @@ async function init() {
   console.log('PostgreSQL inicializado com sucesso.');
 }
 
-module.exports = init;
+module.exports = init;console.log('TESTE RENDER');
